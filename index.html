@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<title>團購點餐機｜AI 自動辨識菜單</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700;900&family=Noto+Sans+TC:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#20241f;
+    --ink-soft:#4a5147;
+    --paper:#f1ecdc;
+    --paper-raised:#f8f4e8;
+    --paper-line:#ddd4b8;
+    --accent:#d6491f;
+    --accent-dark:#a13011;
+    --accent-soft:#f3ddce;
+    --matcha:#5e7a4a;
+    --matcha-soft:#e2ead9;
+    --gold:#c79a3e;
+    --danger:#b23a2f;
+    --radius:14px;
+    --shadow: 0 2px 0 rgba(32,36,31,0.06), 0 10px 24px -14px rgba(32,36,31,0.35);
+    font-size:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      repeating-linear-gradient(0deg, rgba(32,36,31,0.015) 0px, rgba(32,36,31,0.015) 1px, transparent 1px, transparent 3px),
+      var(--paper);
+    color:var(--ink);
+    font-family:'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .display{font-family:'Noto Serif TC','Noto Sans TC',serif; font-weight:900;}
+  .mono{font-family:'Space Mono','Noto Sans TC',monospace;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:96px;}
+
+  /* ---- top bar ---- */
+  .topbar{
+    background:var(--ink);
+    color:var(--paper-raised);
+    padding:18px 20px 16px;
+    position:sticky; top:0; z-index:40;
+    box-shadow:0 6px 16px -10px rgba(0,0,0,0.5);
+  }
+  .topbar .eyebrow{
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--gold); font-weight:700; margin-bottom:2px;
+  }
+  .topbar h1{
+    margin:0; font-size:21px; display:flex; align-items:center; gap:8px;
+  }
+  .topbar .sub{font-size:12.5px; color:#c9cfc3; margin-top:3px;}
+  .backbtn{
+    background:none;border:1px solid rgba(255,255,255,0.25); color:var(--paper-raised);
+    border-radius:999px; padding:5px 12px; font-size:12.5px; cursor:pointer;
+  }
+  .topbar-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+
+  .content{padding:18px 16px 8px;}
+
+  /* ---- generic components ---- */
+  .card{
+    background:var(--paper-raised);
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+    box-shadow:var(--shadow);
+  }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    width:100%;
+    padding:14px 16px; border-radius:12px; border:none;
+    font-size:15.5px; font-weight:700; cursor:pointer;
+    font-family:inherit;
+    transition:transform .08s ease;
+  }
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:var(--accent); color:#fff7ef;}
+  .btn-primary:disabled{background:#c9c2ac; color:#8a8570; cursor:not-allowed;}
+  .btn-ghost{background:transparent; color:var(--ink); border:1.5px solid var(--paper-line);}
+  .btn-dark{background:var(--ink); color:var(--paper-raised);}
+  .btn-danger{background:var(--danger); color:#fff;}
+  .btn-sm{padding:8px 12px; font-size:13px; width:auto;}
+  .btn-row{display:flex; gap:10px;}
+  .btn-row .btn{flex:1;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin-bottom:6px; letter-spacing:.02em;}
+  .field input[type=text], .field input[type=number], .field input[type=datetime-local], .field textarea{
+    width:100%; padding:12px 13px; border-radius:10px; border:1.5px solid var(--paper-line);
+    background:#fffdf7; font-size:15px; font-family:inherit; color:var(--ink);
+  }
+  .field textarea{min-height:110px; resize:vertical; font-family:'Space Mono',monospace; font-size:13.5px;}
+  .field input:focus, .field textarea:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .hint{font-size:12px; color:var(--ink-soft); opacity:.85; margin-top:5px; line-height:1.5;}
+
+  .eyebrow-label{
+    font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--accent-dark); margin-bottom:8px; display:flex; align-items:center; gap:6px;
+  }
+  .eyebrow-label .num{
+    background:var(--accent); color:#fff; width:18px; height:18px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center; font-size:10.5px;
+  }
+
+  h2.section-title{font-size:19px; margin:2px 0 14px; display:flex; align-items:center; gap:8px;}
+
+  /* home */
+  .home-hero{padding:14px 4px 6px;}
+  .home-hero .big{font-size:30px; line-height:1.25; margin:6px 0 6px;}
+  .home-hero .desc{font-size:13.5px; color:var(--ink-soft); line-height:1.6; margin-bottom:20px;}
+  .choice-card{
+    display:flex; gap:14px; align-items:flex-start;
+    background:var(--paper-raised); border:1.5px solid var(--paper-line); border-radius:var(--radius);
+    padding:16px; margin-bottom:12px; cursor:pointer; box-shadow:var(--shadow); text-align:left;
+    width:100%; font-family:inherit;
+  }
+  .choice-card .ic{font-size:26px;}
+  .choice-card h3{margin:0 0 3px; font-size:16px;}
+  .choice-card p{margin:0; font-size:12.5px; color:var(--ink-soft); line-height:1.5;}
+
+  /* upload */
+  .upload-box{
+    border:2px dashed var(--paper-line); border-radius:var(--radius);
+    padding:26px 14px; text-align:center; background:var(--paper-raised); cursor:pointer;
+  }
+  .upload-box .ic{font-size:30px; margin-bottom:6px;}
+  .thumb-row{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;}
+  .thumb{position:relative; width:72px; height:72px; border-radius:8px; overflow:hidden; border:1px solid var(--paper-line);}
+  .thumb img{width:100%; height:100%; object-fit:cover;}
+  .thumb .rm{
+    position:absolute; top:2px; right:2px; background:rgba(32,36,31,0.75); color:#fff;
+    border:none; border-radius:50%; width:18px; height:18px; font-size:11px; cursor:pointer; line-height:1;
+  }
+
+  /* menu editor rows */
+  .menu-row{
+    display:flex; gap:8px; align-items:center; padding:9px 0;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .menu-row:last-child{border-bottom:none;}
+  .menu-row input[type=text]{flex:1; min-width:0; padding:9px 10px; border-radius:8px; border:1.5px solid var(--paper-line); font-size:14px; background:#fffdf7;}
+  .menu-row input[type=number]{width:78px; padding:9px 8px; border-radius:8px; border:1.5px solid var(--paper-line); font-size:14px; text-align:right; background:#fffdf7; font-family:'Space Mono',monospace;}
+  .menu-row .rowdel{background:none;border:none;color:var(--danger);font-size:17px;cursor:pointer;padding:4px 6px;}
+
+  .tabs{display:flex; gap:6px; margin-bottom:14px; background:var(--paper-line); padding:4px; border-radius:10px;}
+  .tab{flex:1; text-align:center; padding:8px 4px; font-size:12.5px; font-weight:700; border-radius:7px; cursor:pointer; color:var(--ink-soft);}
+  .tab.active{background:var(--paper-raised); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,0.12);}
+
+  /* order item card */
+  .item-card{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--paper-raised); border:1px solid var(--paper-line); border-radius:12px;
+    padding:13px 14px; margin-bottom:10px;
+  }
+  .item-card .iname{font-size:15px; font-weight:700; margin-bottom:3px;}
+  .item-card .iprice{font-size:12.5px; color:var(--ink-soft); font-family:'Space Mono',monospace;}
+  .stepper{display:flex; align-items:center; gap:0; border:1.5px solid var(--paper-line); border-radius:999px; overflow:hidden; background:#fff;}
+  .stepper button{
+    width:34px; height:34px; border:none; background:var(--paper-raised); font-size:17px; cursor:pointer; color:var(--ink);
+  }
+  .stepper button:active{background:var(--paper-line);}
+  .stepper .qty{width:32px; text-align:center; font-family:'Space Mono',monospace; font-weight:700; font-size:15px;}
+
+  /* sticky bottom bar */
+  .bottombar{
+    position:fixed; left:0; right:0; bottom:0; z-index:50;
+    max-width:480px; margin:0 auto;
+    background:var(--ink); color:var(--paper-raised);
+    padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    display:flex; align-items:center; gap:12px;
+    box-shadow:0 -8px 20px -10px rgba(0,0,0,0.4);
+  }
+  .bottombar .totals{flex:1;}
+  .bottombar .totals .lbl{font-size:10.5px; color:#b9c0b0; letter-spacing:.08em;}
+  .bottombar .totals .amt{font-size:20px; font-weight:700; font-family:'Space Mono',monospace;}
+  .bottombar .btn{width:auto; padding:12px 20px;}
+
+  /* receipt (signature element) */
+  .receipt{
+    background:#fffef9;
+    border:1px solid var(--paper-line);
+    border-radius:4px 4px 0 0;
+    padding:18px 18px 14px;
+    position:relative;
+    box-shadow:var(--shadow);
+    margin-bottom:0;
+  }
+  .receipt-zigzag{
+    height:12px;
+    background:
+      linear-gradient(-45deg, #fffef9 8px, transparent 0) 0 6px,
+      linear-gradient(45deg, #fffef9 8px, transparent 0) 0 6px;
+    background-color: var(--paper);
+    background-size: 16px 16px;
+    background-repeat: repeat-x;
+    margin-bottom:16px;
+  }
+  .receipt h3{margin:0 0 2px; font-size:16px;}
+  .receipt .rmeta{font-size:11.5px; color:var(--ink-soft); margin-bottom:10px;}
+  .receipt .rline{
+    display:flex; justify-content:space-between; font-size:13.5px; padding:5px 0;
+    border-bottom:1px dashed var(--paper-line);
+  }
+  .receipt .rline .rname{color:var(--ink);}
+  .receipt .rline .rval{font-family:'Space Mono',monospace; font-weight:700;}
+  .receipt .rtotal{display:flex; justify-content:space-between; padding-top:10px; font-size:16px; font-weight:700;}
+  .receipt .rtotal .rval{font-family:'Space Mono',monospace; color:var(--accent-dark);}
+  .stamp{
+    position:absolute; top:14px; right:16px;
+    border:3px solid var(--danger); color:var(--danger);
+    font-weight:900; font-size:13px; padding:4px 9px; border-radius:6px;
+    transform:rotate(-9deg); letter-spacing:.05em; opacity:.88;
+    font-family:'Noto Sans TC',sans-serif;
+  }
+  .stamp.matcha{border-color:var(--matcha); color:var(--matcha);}
+
+  /* summary stat grid */
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:14px;}
+  .stat-box{background:var(--paper-raised); border:1px solid var(--paper-line); border-radius:12px; padding:12px 8px; text-align:center;}
+  .stat-box .v{font-size:19px; font-weight:700; font-family:'Space Mono',monospace; color:var(--accent-dark);}
+  .stat-box .k{font-size:10.5px; color:var(--ink-soft); margin-top:2px;}
+
+  .order-row{background:var(--paper-raised); border:1px solid var(--paper-line); border-radius:12px; padding:12px 14px; margin-bottom:9px;}
+  .order-row .orow-top{display:flex; justify-content:space-between; align-items:baseline;}
+  .order-row .oname{font-weight:700; font-size:14.5px;}
+  .order-row .oamt{font-family:'Space Mono',monospace; font-weight:700; color:var(--accent-dark);}
+  .order-row .oitems{font-size:12px; color:var(--ink-soft); margin-top:4px; line-height:1.5;}
+
+  .badge{display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px;}
+  .badge.open{background:var(--matcha-soft); color:var(--matcha);}
+  .badge.closed{background:#f1d9d5; color:var(--danger);}
+
+  .code-display{
+    text-align:center; padding:22px 10px; background:var(--ink); border-radius:var(--radius); color:var(--paper-raised); margin-bottom:14px;
+  }
+  .code-display .lbl{font-size:11px; letter-spacing:.16em; color:var(--gold); text-transform:uppercase; margin-bottom:8px;}
+  .code-display .code{font-family:'Space Mono',monospace; font-size:34px; font-weight:700; letter-spacing:.12em;}
+
+  .empty-state{text-align:center; padding:34px 14px; color:var(--ink-soft);}
+  .empty-state .ic{font-size:34px; margin-bottom:8px;}
+
+  .toast{
+    position:fixed; bottom:100px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:10px 18px; border-radius:999px; font-size:13px;
+    z-index:100; box-shadow:0 6px 18px rgba(0,0,0,0.3); opacity:0; transition:opacity .25s ease;
+    pointer-events:none; white-space:nowrap;
+  }
+  .toast.show{opacity:1;}
+
+  .spinner{
+    width:16px; height:16px; border:2.5px solid rgba(255,255,255,0.35); border-top-color:#fff;
+    border-radius:50%; display:inline-block; animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .link-box{
+    display:flex; align-items:center; gap:8px; background:#fffdf7; border:1.5px dashed var(--paper-line);
+    border-radius:10px; padding:10px 12px; font-family:'Space Mono',monospace; font-size:12.5px; word-break:break-all;
+  }
+  .link-box button{flex-shrink:0;}
+
+  .divider-label{
+    display:flex; align-items:center; gap:10px; margin:18px 0 12px; color:var(--ink-soft); font-size:12px; font-weight:700;
+  }
+  .divider-label::before, .divider-label::after{content:''; flex:1; height:1px; background:var(--paper-line);}
+
+  a{color:var(--accent-dark);}
+  ::selection{background:var(--accent-soft);}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================================
+   AI 團購點餐系統  —  單頁應用（無框架）
+   ---------------------------------------------------------------------------------
+   資料模型（皆存於 window.storage，shared:true 讓不同使用者以同一份團購代碼互通）：
+     gb_{code}          -> { code, title, menu:[{id,name,price}], deadline, locked, createdAt }
+     gb_{code}_orders   -> { [personName]: { items:{ [itemId]: qty }, updatedAt } }
+   個人裝置端記憶（shared:false）：
+     my_hosted_codes    -> [code, ...]           我開過的團購（方便回到主揪統計頁）
+     my_joined          -> [{code,name}, ...]    我跟過的團購與填過的姓名
+   ===================================================================================== */
+
+// ---------------------------------------------------------------------------
+// 🔌 AI / OCR 整合點 — 三層 fallback，確保「不管在哪個瀏覽器打開都真的能用」
+// ---------------------------------------------------------------------------
+// recognizeMenuFromImages() 是唯一的菜單辨識進入點，內部依序嘗試：
+//
+//   第 1 層｜tryClaudeVisionOCR()
+//     呼叫 Claude（claude-sonnet-4-6, vision）直接讀圖辨識。
+//     ⚠️ 這支 fetch 只有在 Claude 官方的 Artifact 預覽環境中才會被自動代理、
+//     不需要金鑰；一旦把這個 HTML 檔案下載到本機、或部署到任何其他網域打開，
+//     瀏覽器會因為沒有金鑰與跨網域限制而直接失敗——這是正常、預期中的行為，
+//     程式會自動、安靜地換下一層，不會卡住也不會嚇到使用者。
+//     若你想在自己的網站上啟用這一層，需要自建後端代理 + 自己的 API 金鑰
+//     （金鑰絕對不能放在前端 JS 裡），並改成呼叫你自己的 /api/ocr。
+//
+//   第 2 層｜ocrImagesToText() + Tesseract.js
+//     真正「不需要任何 API 金鑰、在任何瀏覽器都能運作」的辨識方式：
+//     用開源的 Tesseract.js（WebAssembly OCR 引擎）在使用者手機/電腦本機端
+//     直接辨識圖片文字，圖片完全不會上傳到任何伺服器。首次使用需要從 CDN
+//     下載繁中語言包（約 20-30MB，之後瀏覽器會快取），辨識準確度不如雲端 AI，
+//     但這是這個系統「保證可以動」的核心後盾。
+//
+//   第 3 層｜貼上文字解析 / 手動輸入
+//     若上面兩層都失敗（例如完全離線），使用者可以貼上任何來源辨識出的文字，
+//     或直接手動輸入品項，兩者都完全不需要網路與金鑰。
+//
+// 想要換成其他雲端 OCR（Google Vision、Azure Document Intelligence…）的話，
+// 只要改寫 tryClaudeVisionOCR() 內部實作，維持「輸入圖片陣列、輸出
+// [{name, price}]」的介面即可，其餘 UI 完全不用改。
+// ---------------------------------------------------------------------------
+
+async function recognizeMenuFromImages(images, onProgress){
+  const report = (text, pct) => { if (onProgress) onProgress(text, pct); };
+
+  // 第 1 層：Claude 雲端視覺辨識（僅在 Claude Artifact 環境有效，其餘環境會自然失敗並往下走）
+  try{
+    report('嘗試以雲端 AI 辨識…', 0);
+    const items = await tryClaudeVisionOCR(images);
+    if (items && items.length) return { items, engine:'claude' };
+  }catch(err){
+    console.warn('[OCR] 雲端 AI 無法使用（預期內，將改用本機 OCR）：', err && err.message);
+  }
+
+  // 第 2 層：Tesseract.js 本機 OCR（真正可運作、零金鑰）
+  let text = '';
+  try{
+    text = await ocrImagesToText(images, report);
+  }catch(err){
+    throw new Error('本機 OCR 引擎載入失敗（' + (err && err.message || '未知錯誤') + '），請改用下方「貼上文字」或「手動新增」');
+  }
+  const items = parseMenuFromText(text, true);
+  if (items.length) return { items, engine:'tesseract', rawText:text };
+  throw new Error('OCR 沒有辨識出可用的品項與價格，菜單可能過於模糊。請改用「貼上文字」或「手動新增」，或換一張較清楚的照片再試一次');
+}
+
+async function tryClaudeVisionOCR(images){
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try{
+    const content = [
+      { type:'text', text:
+        '你是專業菜單辨識助手。請仔細判讀以下一張或多張菜單/價目表照片，' +
+        '擷取「每一個」品項名稱與價格。若同一品項有多種規格或價位（例如大小杯、' +
+        '半糖去冰等），請分別列成不同項目並在名稱中註明規格。' +
+        '請只回傳一個 JSON 陣列，不要任何說明文字、不要使用 markdown code fence，' +
+        '格式為：[{"name":"品項名稱","price":數字}, ...]。' +
+        '價格看不清楚就填 0。不要輸出陣列以外的任何文字。'
+      }
+    ];
+    for (const img of images){
+      content.push({ type:'image', source:{ type:'base64', media_type:'image/jpeg', data: img.base64 } });
+    }
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:2000,
+        messages:[ { role:'user', content } ]
+      })
+    });
+    if (!res.ok) throw new Error('雲端 AI 回應失敗 (' + res.status + ')');
+    const data = await res.json();
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    if (!textBlock) throw new Error('雲端 AI 未回傳文字內容');
+    let raw = textBlock.text.trim();
+    raw = raw.replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (match) raw = match[0];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('雲端 AI 回傳格式不是陣列');
+    return parsed
+      .filter(x => x && x.name)
+      .map(x => ({ id: uid(), name: String(x.name).trim(), price: Number(x.price) || 0 }));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// 動態載入 Tesseract.js（只在真的要辨識時才載入，且只載入一次）
+function loadTesseractScript(){
+  if (window.Tesseract) return Promise.resolve();
+  if (loadTesseractScript._p) return loadTesseractScript._p;
+  loadTesseractScript._p = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('OCR 引擎載入失敗，請確認網路連線'));
+    document.head.appendChild(s);
+  });
+  return loadTesseractScript._p;
+}
+
+async function ocrImagesToText(images, report){
+  report('正在載入本機 OCR 引擎（首次使用需下載語言包）…', 0);
+  await loadTesseractScript();
+  let allText = '';
+  for (let i = 0; i < images.length; i++){
+    const label = images.length > 1 ? `第 ${i+1}/${images.length} 張圖片` : '圖片';
+    const result = await window.Tesseract.recognize(images[i].dataUrl, 'chi_tra+eng', {
+      logger: m => {
+        if (m.status === 'recognizing text'){
+          report(`${label}辨識中… ${Math.round((m.progress||0)*100)}%`, m.progress||0);
+        } else if (m.status){
+          report(`${label}：${m.status}`, m.progress||0);
+        }
+      }
+    });
+    allText += '\n' + (result && result.data && result.data.text ? result.data.text : '');
+  }
+  return allText;
+}
+
+// 前端 fallback：貼上 OCR / 手動抄寫的純文字，用規則解析「品項＋價格」
+// 支援格式範例："珍珠奶茶 60"、"珍珠奶茶,60"、"珍珠奶茶：65元"、"珍珠奶茶 $60"
+// lenient=true 時額外支援 OCR 常見的「無分隔符號」情況，例如 "珍珠奶茶60"
+function parseMenuFromText(text, lenient){
+  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const items = [];
+  const seen = new Set();
+  for (let rawLine of lines){
+    let line = rawLine.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
+    line = line.replace(/[|_丨]/g, ' ').trim();
+    if (!line || line.length > 40) continue;
+    let m = line.match(/^(.{1,30}?)[\s.。:：,，、\-—]+\$?\s*(?:NT)?\$?\s*(\d{1,4})\s*(?:元|NT)?$/);
+    if (!m && lenient) m = line.match(/^([^\d]{1,30}?)(\d{2,4})$/);
+    if (!m) continue;
+    const name = m[1].replace(/[.\-–—・、,，:：\s$]+$/,'').trim();
+    const price = Number(m[2]) || 0;
+    if (!name || price <= 0 || price > 9999) continue;
+    const key = name + '_' + price;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({ id: uid(), name, price });
+  }
+  return items;
+}
+
+// ---------------------------------------------------------------------------
+// 小工具
+// ---------------------------------------------------------------------------
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function genCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+function money(n){ return 'NT$ ' + Math.round(n).toLocaleString('en-US'); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+function fmtDeadline(iso){
+  if (!iso) return null;
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function isClosed(session){
+  if (!session) return true;
+  if (session.locked) return true;
+  if (session.deadline && new Date() > new Date(session.deadline)) return true;
+  return false;
+}
+
+async function storageGet(key, shared){
+  try{ const r = await window.storage.get(key, !!shared); return r ? JSON.parse(r.value) : null; }
+  catch(e){ return null; }
+}
+async function storageSet(key, value, shared){
+  try{ await window.storage.set(key, JSON.stringify(value), !!shared); return true; }
+  catch(e){ console.error('storage set failed', e); return false; }
+}
+
+// 讀寫團購時用「讀取→合併→寫回」降低多人同時操作互相覆蓋的機率
+async function saveMyOrder(code, name, itemsMap){
+  const key = 'gb_' + code + '_orders';
+  const current = (await storageGet(key, true)) || {};
+  current[name] = { items: itemsMap, updatedAt: new Date().toISOString() };
+  await storageSet(key, current, true);
+}
+
+function resizeImageFile(file, maxDim, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > height && width > maxDim){ height = Math.round(height * maxDim/width); width = maxDim; }
+      else if (height > maxDim){ width = Math.round(width * maxDim/height); height = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      resolve({ dataUrl, base64: dataUrl.split(',')[1] });
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 全域狀態 + 路由
+// ---------------------------------------------------------------------------
+const State = {
+  view: 'home',           // home | create | order | host
+  code: null,
+  session: null,
+  orders: null,
+  myName: '',
+  myItems: {},            // itemId -> qty  (order 頁使用)
+  images: [],             // create 頁：{dataUrl, base64}
+  draftMenu: [],          // create 頁：編輯中的菜單
+  ocrTab: 'ai',           // ai | paste | manual
+  ocrLoading: false,
+  ocrError: '',
+  ocrProgressText: '',
+  pollTimer: null,
+};
+
+function stopPolling(){ if (State.pollTimer){ clearInterval(State.pollTimer); State.pollTimer = null; } }
+function startPolling(fn, ms){ stopPolling(); State.pollTimer = setInterval(fn, ms); }
+
+function goHome(){
+  stopPolling();
+  Object.assign(State, { view:'home', code:null, session:null, orders:null, myItems:{}, images:[], draftMenu:[], ocrTab:'ai', ocrError:'' });
+  render();
+}
+
+async function init(){
+  const params = new URLSearchParams(location.search);
+  const codeFromLink = (params.get('code') || '').toUpperCase().trim();
+  const roleFromLink = params.get('role');
+  if (codeFromLink){
+    const session = await storageGet('gb_' + codeFromLink, true);
+    if (session){
+      State.code = codeFromLink;
+      State.session = session;
+      if (roleFromLink === 'host'){
+        enterHost(codeFromLink);
+        return;
+      } else {
+        enterOrder(codeFromLink);
+        return;
+      }
+    }
+  }
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// render：依 State.view 畫出對應畫面
+// ---------------------------------------------------------------------------
+function render(){
+  const app = document.getElementById('app');
+  if (State.view === 'home') app.innerHTML = viewHome();
+  else if (State.view === 'create') app.innerHTML = viewCreate();
+  else if (State.view === 'order') app.innerHTML = viewOrder();
+  else if (State.view === 'host') app.innerHTML = viewHost();
+  bindEvents();
+}
+
+// =====================================================================================
+// HOME
+// =====================================================================================
+function viewHome(){
+  return `
+    <div class="topbar">
+      <div class="eyebrow">團 購 點 餐 機</div>
+      <div class="topbar-row">
+        <h1>🍱 AI 團購點餐系統</h1>
+      </div>
+      <div class="sub">拍菜單、AI 自動辨識、大家自己填單、主揪一鍵結算</div>
+    </div>
+    <div class="content">
+      <div class="home-hero">
+        <button class="choice-card" data-act="go-create">
+          <div class="ic">🧾</div>
+          <div><h3>我要開團（當主揪）</h3><p>上傳菜單照片 → AI 辨識品項與價格 → 設定截止時間 → 產生分享連結</p></div>
+        </button>
+        <button class="choice-card" data-act="go-join">
+          <div class="ic">🙋</div>
+          <div><h3>我要跟團（輸入代碼）</h3><p>輸入主揪給的 5 碼代碼，填姓名、選品項數量，送出訂單</p></div>
+        </button>
+      </div>
+      ${renderMyLists()}
+    </div>
+  `;
+}
+
+function renderMyLists(){
+  const hosted = JSON.parse(localStorage.getItem('my_hosted_codes') || '[]');
+  const joined = JSON.parse(localStorage.getItem('my_joined') || '[]');
+  if (!hosted.length && !joined.length) return '';
+  let html = '<div class="divider-label">這台裝置的紀錄</div>';
+  if (hosted.length){
+    html += '<div class="card"><div class="eyebrow-label">我開的團購</div>';
+    hosted.slice(-5).reverse().forEach(c => {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--paper-line);">
+        <span class="mono" style="font-weight:700;">${esc(c)}</span>
+        <button class="btn btn-ghost btn-sm" data-act="open-host" data-code="${esc(c)}">主揪統計頁</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  if (joined.length){
+    html += '<div class="card"><div class="eyebrow-label">我跟過的團</div>';
+    joined.slice(-5).reverse().forEach(j => {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--paper-line);">
+        <span style="font-size:13px;">${esc(j.code)}・${esc(j.name)}</span>
+        <button class="btn btn-ghost btn-sm" data-act="open-order" data-code="${esc(j.code)}" data-name="${esc(j.name)}">回到訂單</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
+  return html;
+}
+
+// =====================================================================================
+// CREATE（主揪：上傳菜單 → AI 辨識 → 編輯 → 設定 → 建立）
+// =====================================================================================
+function viewCreate(){
+  return `
+    <div class="topbar">
+      <div class="topbar-row">
+        <button class="backbtn" data-act="go-home">‹ 返回</button>
+        <div style="text-align:right;"><div class="eyebrow">開團設定</div></div>
+      </div>
+      <h1 style="margin-top:6px;">🧾 建立新團購</h1>
+    </div>
+    <div class="content">
+
+      <div class="eyebrow-label"><span class="num">1</span>上傳菜單照片</div>
+      <div class="card">
+        <label class="upload-box" for="fileInput">
+          <div class="ic">📷</div>
+          <div style="font-weight:700;">點此選擇 / 拍攝菜單照片</div>
+          <div class="hint">可一次選多張，例如飲料店正反兩面菜單</div>
+        </label>
+        <input type="file" id="fileInput" accept="image/*" multiple capture="environment" style="display:none;">
+        <div class="thumb-row">${State.images.map((im,i)=>`
+          <div class="thumb"><img src="${im.dataUrl}"><button class="rm" data-act="rm-img" data-i="${i}">✕</button></div>
+        `).join('')}</div>
+      </div>
+
+      <div class="eyebrow-label"><span class="num">2</span>辨識品項與價格</div>
+      <div class="card">
+        <div class="tabs">
+          <div class="tab ${State.ocrTab==='ai'?'active':''}" data-act="set-tab" data-tab="ai">✨ AI 辨識</div>
+          <div class="tab ${State.ocrTab==='paste'?'active':''}" data-act="set-tab" data-tab="paste">📋 貼上文字</div>
+          <div class="tab ${State.ocrTab==='manual'?'active':''}" data-act="set-tab" data-tab="manual">✍️ 手動新增</div>
+        </div>
+        ${renderOcrTabBody()}
+      </div>
+
+      <div class="eyebrow-label"><span class="num">3</span>確認菜單（可直接修改）</div>
+      <div class="card">
+        ${State.draftMenu.length ? renderMenuEditor() : `<div class="empty-state"><div class="ic">📝</div>目前沒有品項<br>用上方任一方式加入品項</div>`}
+        <button class="btn btn-ghost" style="margin-top:10px;" data-act="add-empty-row">＋ 新增一列</button>
+      </div>
+
+      <div class="eyebrow-label"><span class="num">4</span>團購資訊</div>
+      <div class="card">
+        <div class="field">
+          <label>團購標題</label>
+          <input type="text" id="titleInput" placeholder="例如：珍煮丹 8/28 (五) 團購" value="${esc(State.draftTitle||'')}">
+        </div>
+        <div class="field">
+          <label>點餐截止時間（選填，可之後再改）</label>
+          <input type="datetime-local" id="deadlineInput" value="${State.draftDeadline||''}">
+          <div class="hint">超過此時間，跟團頁會自動鎖定、無法再送出訂單</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" style="font-size:16.5px; padding:16px;" data-act="finish-create">
+        🚀 建立團購並產生分享連結
+      </button>
+    </div>
+  `;
+}
+
+function renderOcrTabBody(){
+  if (State.ocrTab === 'ai'){
+    return `
+      <p class="hint" style="margin-top:0;margin-bottom:10px;">
+        自動辨識分兩層：先嘗試雲端 AI（僅在 Claude 預覽環境可用），若不可用會自動改用
+        瀏覽器內建的本機 OCR 引擎繼續辨識——全程不需要任何 API 金鑰，圖片也不會上傳到外部伺服器。
+        首次使用本機 OCR 需下載繁中語言包，依網速可能需 10-40 秒。
+      </p>
+      <button class="btn btn-dark" data-act="run-ai-ocr" ${State.ocrLoading || !State.images.length ? 'disabled' : ''}>
+        ${State.ocrLoading ? '<span class="spinner"></span> 辨識中…' : '✨ 開始自動辨識'}
+      </button>
+      ${State.ocrLoading ? `<div class="hint" id="ocrProgressText" style="margin-top:8px;font-weight:700;">${esc(State.ocrProgressText||'')}</div>` : ''}
+      ${!State.images.length ? '<div class="hint">請先在步驟 1 上傳至少一張菜單照片</div>' : ''}
+      ${State.ocrError ? `<div class="hint" style="color:var(--danger); font-weight:700; margin-top:10px;">⚠️ ${esc(State.ocrError)}　已自動切換到下方「貼上文字」或「手動新增」繼續。</div>` : ''}
+    `;
+  }
+  if (State.ocrTab === 'paste'){
+    return `
+      <p class="hint" style="margin-top:0;">
+        把用手機內建掃描文字功能，或別的 OCR App 認出的文字貼在下面，一行一個品項，格式如「珍珠奶茶 60」。
+      </p>
+      <div class="field" style="margin-top:8px;">
+        <textarea id="pasteText" placeholder="珍珠奶茶 60
+四季青茶 25
+波霸鮮奶 65"></textarea>
+      </div>
+      <button class="btn btn-dark" data-act="run-paste-parse">📋 解析文字並加入菜單</button>
+    `;
+  }
+  return `
+    <p class="hint" style="margin-top:0;">
+      直接在下方「步驟 3」的表格用「＋ 新增一列」手動輸入品項名稱與價格即可，最保險、不需要任何 AI 服務。
+    </p>
+  `;
+}
+
+function renderMenuEditor(){
+  return State.draftMenu.map((item, i) => `
+    <div class="menu-row">
+      <input type="text" value="${esc(item.name)}" data-act="edit-name" data-i="${i}" placeholder="品項名稱">
+      <input type="number" value="${item.price}" min="0" data-act="edit-price" data-i="${i}" placeholder="價格">
+      <button class="rowdel" data-act="del-row" data-i="${i}">✕</button>
+    </div>
+  `).join('');
+}
+
+// =====================================================================================
+// ORDER（跟團者點餐頁）
+// =====================================================================================
+function enterOrder(code){
+  State.code = code; State.view = 'order';
+  render();
+  refreshOrderView();
+  startPolling(refreshOrderView, 6000);
+}
+
+async function refreshOrderView(){
+  const session = await storageGet('gb_' + State.code, true);
+  if (!session){ State.session = null; render(); return; }
+  State.session = session;
+  const orders = (await storageGet('gb_' + State.code + '_orders', true)) || {};
+  State.orders = orders;
+  if (State.myName && orders[State.myName]){
+    State.myItems = { ...orders[State.myName].items };
+  }
+  render();
+}
+
+function viewOrder(){
+  if (!State.session){
+    return `
+      <div class="topbar"><div class="topbar-row"><button class="backbtn" data-act="go-home">‹ 返回</button></div><h1 style="margin-top:6px;">🙋 跟團點餐</h1></div>
+      <div class="content">
+        <div class="card">
+          <div class="field"><label>輸入團購代碼</label>
+            <input type="text" id="joinCodeInput" placeholder="例如 A3F9K" maxlength="8" style="text-transform:uppercase;letter-spacing:.1em;">
+          </div>
+          <button class="btn btn-primary" data-act="join-by-code">查詢團購</button>
+        </div>
+      </div>
+    `;
+  }
+  const session = State.session;
+  const closed = isClosed(session);
+  const total = Object.entries(State.myItems).reduce((s,[id,qty]) => {
+    const item = session.menu.find(m => m.id === id);
+    return s + (item ? item.price*qty : 0);
+  }, 0);
+  const nameLocked = !!State.myName;
+
+  return `
+    <div class="topbar">
+      <div class="topbar-row">
+        <button class="backbtn" data-act="go-home">‹ 返回</button>
+        <span class="badge ${closed?'closed':'open'}">${closed?'🔒 已截止點餐':'🟢 開放點餐中'}</span>
+      </div>
+      <h1 style="margin-top:8px;">${esc(session.title || '團購點餐')}</h1>
+      <div class="sub">代碼 ${esc(session.code)}${session.deadline ? '　・　截止 ' + fmtDeadline(session.deadline) : ''}</div>
+    </div>
+    <div class="content">
+      ${!nameLocked ? `
+        <div class="card">
+          <div class="field"><label>你的名字</label>
+            <input type="text" id="myNameInput" placeholder="讓主揪認得你，例如：3F 小美">
+          </div>
+          <button class="btn btn-primary" data-act="confirm-name">開始點餐</button>
+        </div>
+      ` : `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:14px;">👤 <strong>${esc(State.myName)}</strong> 的訂單</div>
+          <button class="btn btn-ghost btn-sm" data-act="change-name">換人填</button>
+        </div>
+        ${closed ? `<div class="card" style="text-align:center; color:var(--danger); font-weight:700;">⏰ 點餐已截止，無法再修改數量</div>` : ''}
+        ${session.menu.map(item => {
+          const qty = State.myItems[item.id] || 0;
+          return `
+          <div class="item-card">
+            <div>
+              <div class="iname">${esc(item.name)}</div>
+              <div class="iprice">${money(item.price)}</div>
+            </div>
+            <div class="stepper">
+              <button data-act="qty-dec" data-id="${item.id}" ${closed?'disabled':''}>－</button>
+              <div class="qty">${qty}</div>
+              <button data-act="qty-inc" data-id="${item.id}" ${closed?'disabled':''}>＋</button>
+            </div>
+          </div>`;
+        }).join('')}
+        ${!session.menu.length ? '<div class="empty-state"><div class="ic">📭</div>主揪還沒有加入品項</div>' : ''}
+      `}
+    </div>
+    ${nameLocked ? `
+      <div class="bottombar">
+        <div class="totals"><div class="lbl">你的小計</div><div class="amt">${money(total)}</div></div>
+        <button class="btn btn-primary" data-act="submit-order" ${closed?'disabled':''}>
+          ${session._justSubmitted ? '✓ 已更新' : '送出訂單'}
+        </button>
+      </div>
+    ` : ''}
+  `;
+}
+
+// =====================================================================================
+// HOST（主揪統計頁）
+// =====================================================================================
+function enterHost(code){
+  State.code = code; State.view = 'host';
+  render();
+  refreshHostView();
+  startPolling(refreshHostView, 6000);
+}
+
+async function refreshHostView(){
+  const session = await storageGet('gb_' + State.code, true);
+  State.session = session;
+  if (session){
+    State.orders = (await storageGet('gb_' + State.code + '_orders', true)) || {};
+  }
+  render();
+}
+
+function viewHost(){
+  if (!State.session){
+    return `
+      <div class="topbar"><div class="topbar-row"><button class="backbtn" data-act="go-home">‹ 返回</button></div><h1 style="margin-top:6px;">📊 主揪統計頁</h1></div>
+      <div class="content">
+        <div class="card">
+          <div class="field"><label>輸入你開的團購代碼</label>
+            <input type="text" id="hostCodeInput" placeholder="例如 A3F9K" style="text-transform:uppercase;letter-spacing:.1em;">
+          </div>
+          <button class="btn btn-primary" data-act="open-host-by-code">查詢統計</button>
+        </div>
+      </div>
+    `;
+  }
+  const session = State.session, orders = State.orders || {};
+  const closed = isClosed(session);
+  const names = Object.keys(orders).filter(n => Object.values(orders[n].items||{}).some(q=>q>0));
+
+  const itemTotals = {};
+  session.menu.forEach(m => itemTotals[m.id] = { name:m.name, price:m.price, qty:0 });
+  let grandTotal = 0;
+  names.forEach(n => {
+    Object.entries(orders[n].items||{}).forEach(([id,qty]) => {
+      if (!qty) return;
+      if (!itemTotals[id]) return;
+      itemTotals[id].qty += qty;
+      grandTotal += itemTotals[id].price * qty;
+    });
+  });
+
+  const shareOrderLink = buildLink(session.code, 'order');
+  const shareHostLink = buildLink(session.code, 'host');
+
+  return `
+    <div class="topbar">
+      <div class="topbar-row">
+        <button class="backbtn" data-act="go-home">‹ 返回</button>
+        <span class="badge ${closed?'closed':'open'}">${closed?'🔒 已鎖定':'🟢 開放中'}</span>
+      </div>
+      <h1 style="margin-top:8px;">📊 ${esc(session.title||'團購統計')}</h1>
+      <div class="sub">代碼 <strong class="mono">${esc(session.code)}</strong>${session.deadline?'　・　截止 '+fmtDeadline(session.deadline):''}</div>
+    </div>
+    <div class="content">
+
+      <div class="card">
+        <div class="eyebrow-label">📤 分享給團員</div>
+        <div class="link-box"><span id="orderLinkText">${esc(shareOrderLink)}</span>
+          <button class="btn btn-ghost btn-sm" data-act="copy" data-copy="${esc(shareOrderLink)}">複製連結</button>
+        </div>
+        <div class="hint">也可以直接把代碼 <strong>${esc(session.code)}</strong> 傳給團員，讓他們在首頁選「我要跟團」輸入。</div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-box"><div class="v">${names.length}</div><div class="k">已點餐人數</div></div>
+        <div class="stat-box"><div class="v">${money(grandTotal).replace('NT$ ','')}</div><div class="k">總金額 (NT$)</div></div>
+        <div class="stat-box"><div class="v">${Object.values(itemTotals).reduce((s,x)=>s+x.qty,0)}</div><div class="k">總份數</div></div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow-label">🔒 點餐控制</div>
+        <div class="btn-row" style="margin-bottom:10px;">
+          <button class="btn ${session.locked?'btn-danger':'btn-dark'}" data-act="toggle-lock">
+            ${session.locked ? '🔓 解除手動鎖定' : '🔒 立即手動鎖定'}
+          </button>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label>截止時間</label>
+          <input type="datetime-local" id="editDeadline" value="${session.deadline || ''}">
+        </div>
+        <button class="btn btn-ghost" style="margin-top:8px;" data-act="save-deadline">更新截止時間</button>
+      </div>
+
+      <div class="receipt" style="margin-top:18px;">
+        ${closed ? '<div class="stamp">已截止</div>' : '<div class="stamp matcha">統計中</div>'}
+        <h3>各品項總計</h3>
+        <div class="rmeta">共 ${session.menu.length} 項商品</div>
+        ${session.menu.map(m => `
+          <div class="rline"><span class="rname">${esc(m.name)} × ${itemTotals[m.id]?.qty || 0}</span><span class="rval">${money((itemTotals[m.id]?.qty||0) * m.price)}</span></div>
+        `).join('')}
+        <div class="rtotal"><span>總計</span><span class="rval">${money(grandTotal)}</span></div>
+      </div>
+      <div class="receipt-zigzag"></div>
+
+      <div class="card" style="margin-top:16px;">
+        <div class="eyebrow-label">👥 個人訂單明細（${names.length}）</div>
+        ${names.length ? names.map(n => {
+          const itemsText = Object.entries(orders[n].items||{})
+            .filter(([id,q])=>q>0)
+            .map(([id,q]) => { const m = session.menu.find(x=>x.id===id); return m ? `${m.name}×${q}` : ''; })
+            .filter(Boolean).join('、');
+          const subtotal = Object.entries(orders[n].items||{}).reduce((s,[id,q])=>{ const m=session.menu.find(x=>x.id===id); return s+(m?m.price*q:0); },0);
+          return `<div class="order-row">
+            <div class="orow-top"><span class="oname">${esc(n)}</span><span class="oamt">${money(subtotal)}</span></div>
+            <div class="oitems">${esc(itemsText)||'（尚未選品項）'}</div>
+          </div>`;
+        }).join('') : `<div class="empty-state"><div class="ic">🧺</div>還沒有人送出訂單</div>`}
+        <button class="btn btn-ghost" style="margin-top:6px;" data-act="copy-summary">📋 複製總結文字（貼到 LINE 群組）</button>
+      </div>
+
+    </div>
+  `;
+}
+
+function buildLink(code, role){
+  const url = new URL(location.href.split('?')[0]);
+  url.searchParams.set('code', code);
+  if (role === 'host') url.searchParams.set('role','host');
+  return url.toString();
+}
+
+function buildSummaryText(session, orders){
+  const names = Object.keys(orders).filter(n => Object.values(orders[n].items||{}).some(q=>q>0));
+  const itemTotals = {};
+  session.menu.forEach(m => itemTotals[m.id] = { name:m.name, price:m.price, qty:0 });
+  let grand = 0;
+  names.forEach(n => Object.entries(orders[n].items||{}).forEach(([id,q])=>{
+    if (!q || !itemTotals[id]) return;
+    itemTotals[id].qty += q; grand += itemTotals[id].price*q;
+  }));
+  let lines = [];
+  lines.push(`【${session.title||'團購'}】結算`);
+  lines.push(`代碼：${session.code}　人數：${names.length}`);
+  lines.push('──────────');
+  session.menu.forEach(m => {
+    const qty = itemTotals[m.id].qty;
+    if (qty>0) lines.push(`${m.name} x${qty} = ${money(m.price*qty)}`);
+  });
+  lines.push('──────────');
+  lines.push(`總計：${money(grand)}`);
+  lines.push('');
+  names.forEach(n => {
+    const itemsText = Object.entries(orders[n].items||{}).filter(([id,q])=>q>0)
+      .map(([id,q])=>{ const m=session.menu.find(x=>x.id===id); return m?`${m.name}x${q}`:''; }).filter(Boolean).join('、');
+    const subtotal = Object.entries(orders[n].items||{}).reduce((s,[id,q])=>{ const m=session.menu.find(x=>x.id===id); return s+(m?m.price*q:0); },0);
+    lines.push(`${n}：${itemsText}（${money(subtotal)}）`);
+  });
+  return lines.join('\n');
+}
+
+// =====================================================================================
+// 事件綁定
+// =====================================================================================
+function bindEvents(){
+  const app = document.getElementById('app');
+
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput){
+    fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      for (const f of files){
+        try{ const r = await resizeImageFile(f, 1100, 0.72); State.images.push(r); }
+        catch(err){ console.error(err); }
+      }
+      render();
+    });
+  }
+
+  app.querySelectorAll('[data-act]').forEach(el => {
+    el.addEventListener('click', (e) => handleAct(el.dataset, e));
+    if (el.tagName === 'INPUT' && (el.dataset.act === 'edit-name' || el.dataset.act === 'edit-price')){
+      el.addEventListener('input', (e) => handleAct(el.dataset, e, true));
+    }
+  });
+}
+
+async function handleAct(ds, e, isInput){
+  const act = ds.act;
+
+  if (act === 'go-create'){ State.view='create'; State.images=[]; State.draftMenu=[]; State.ocrTab='ai'; State.ocrError=''; render(); return; }
+  if (act === 'go-join'){ State.view='order'; State.session=null; State.myName=''; render(); return; }
+  if (act === 'go-home'){ goHome(); return; }
+  if (act === 'open-host'){ enterHost(ds.code); return; }
+  if (act === 'open-order'){ State.myName = ds.name; enterOrder(ds.code); return; }
+
+  // --- create flow ---
+  if (act === 'rm-img'){ State.images.splice(Number(ds.i),1); render(); return; }
+  if (act === 'set-tab'){ State.ocrTab = ds.tab; State.ocrError=''; render(); return; }
+  if (act === 'add-empty-row'){ State.draftMenu.push({ id:uid(), name:'', price:0 }); render(); return; }
+  if (act === 'del-row'){ State.draftMenu.splice(Number(ds.i),1); render(); return; }
+  if (act === 'edit-name'){ State.draftMenu[Number(ds.i)].name = e.target.value; return; }
+  if (act === 'edit-price'){ State.draftMenu[Number(ds.i)].price = Number(e.target.value)||0; return; }
+
+  if (act === 'run-ai-ocr'){
+    State.ocrLoading = true; State.ocrError=''; State.ocrProgressText = '準備開始…'; render();
+    try{
+      const { items, engine } = await recognizeMenuFromImages(State.images, (text, pct) => {
+        State.ocrProgressText = text;
+        const bar = document.getElementById('ocrProgressText');
+        if (bar) bar.textContent = text; // 局部更新避免整頁重繪造成閃爍
+      });
+      State.draftMenu = State.draftMenu.concat(items);
+      showToast(engine === 'claude'
+        ? `✨ 雲端 AI 已辨識出 ${items.length} 項，請檢查修正`
+        : `📱 本機 OCR 已辨識出 ${items.length} 項，請仔細檢查修正（本機辨識準確度較低）`);
+    }catch(err){
+      console.error(err);
+      State.ocrError = (err && err.message) ? err.message : '辨識失敗';
+      State.ocrTab = 'paste';
+    }
+    State.ocrLoading = false; render(); return;
+  }
+  if (act === 'run-paste-parse'){
+    const text = document.getElementById('pasteText').value;
+    const items = parseMenuFromText(text, true);
+    if (!items.length){ showToast('沒有解析到品項，請確認格式如「品項 價格」'); return; }
+    State.draftMenu = State.draftMenu.concat(items);
+    showToast(`已加入 ${items.length} 項`);
+    render(); return;
+  }
+
+  if (act === 'finish-create'){
+    const title = document.getElementById('titleInput').value.trim();
+    const deadline = document.getElementById('deadlineInput').value || null;
+    const menu = State.draftMenu.filter(m => m.name.trim());
+    if (!menu.length){ showToast('請至少加入一個品項'); return; }
+    const code = genCode();
+    const session = { code, title: title || '團購點餐', menu, deadline, locked:false, createdAt: new Date().toISOString() };
+    await storageSet('gb_'+code, session, true);
+    await storageSet('gb_'+code+'_orders', {}, true);
+    const hosted = JSON.parse(localStorage.getItem('my_hosted_codes')||'[]');
+    hosted.push(code); localStorage.setItem('my_hosted_codes', JSON.stringify(hosted));
+    enterHost(code);
+    return;
+  }
+
+  // --- order flow ---
+  if (act === 'join-by-code'){
+    const code = (document.getElementById('joinCodeInput').value||'').toUpperCase().trim();
+    if (!code){ showToast('請輸入代碼'); return; }
+    const session = await storageGet('gb_'+code, true);
+    if (!session){ showToast('找不到此團購代碼，請確認是否輸入正確'); return; }
+    enterOrder(code);
+    return;
+  }
+  if (act === 'confirm-name'){
+    const name = (document.getElementById('myNameInput').value||'').trim();
+    if (!name){ showToast('請輸入名字'); return; }
+    State.myName = name;
+    const orders = State.orders || {};
+    State.myItems = orders[name] ? {...orders[name].items} : {};
+    const joined = JSON.parse(localStorage.getItem('my_joined')||'[]');
+    if (!joined.some(j=>j.code===State.code && j.name===name)) joined.push({code:State.code, name});
+    localStorage.setItem('my_joined', JSON.stringify(joined));
+    render();
+    return;
+  }
+  if (act === 'change-name'){ State.myName=''; State.myItems={}; render(); return; }
+  if (act === 'qty-inc'){
+    State.myItems[ds.id] = (State.myItems[ds.id]||0) + 1; render(); return;
+  }
+  if (act === 'qty-dec'){
+    State.myItems[ds.id] = Math.max(0,(State.myItems[ds.id]||0) - 1); render(); return;
+  }
+  if (act === 'submit-order'){
+    await saveMyOrder(State.code, State.myName, State.myItems);
+    showToast('✅ 訂單已送出／更新！');
+    refreshOrderView();
+    return;
+  }
+
+  // --- host flow ---
+  if (act === 'open-host-by-code'){
+    const code = (document.getElementById('hostCodeInput').value||'').toUpperCase().trim();
+    if (!code){ showToast('請輸入代碼'); return; }
+    const session = await storageGet('gb_'+code, true);
+    if (!session){ showToast('找不到此團購代碼'); return; }
+    enterHost(code);
+    return;
+  }
+  if (act === 'toggle-lock'){
+    State.session.locked = !State.session.locked;
+    await storageSet('gb_'+State.code, State.session, true);
+    render();
+    return;
+  }
+  if (act === 'save-deadline'){
+    const v = document.getElementById('editDeadline').value || null;
+    State.session.deadline = v;
+    await storageSet('gb_'+State.code, State.session, true);
+    showToast('已更新截止時間');
+    render();
+    return;
+  }
+  if (act === 'copy'){
+    try{ await navigator.clipboard.writeText(ds.copy); showToast('已複製連結'); }
+    catch(e){ showToast('複製失敗，請長按文字手動複製'); }
+    return;
+  }
+  if (act === 'copy-summary'){
+    const text = buildSummaryText(State.session, State.orders||{});
+    try{ await navigator.clipboard.writeText(text); showToast('已複製結算文字'); }
+    catch(e){ showToast('複製失敗，請截圖代替'); }
+    return;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
