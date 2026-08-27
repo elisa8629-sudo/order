@@ -285,8 +285,12 @@
    AI 團購點餐系統  —  單頁應用（無框架）
    ---------------------------------------------------------------------------------
    資料模型（皆存於 window.storage，shared:true 讓不同使用者以同一份團購代碼互通）：
-     gb_{code}          -> { code, title, menu:[{id,name,price}], deadline, locked, createdAt }
-     gb_{code}_orders   -> { [personName]: { items:{ [itemId]: qty }, updatedAt } }
+     gb_{code}                  -> { code, title, menu:[{id,name,price}], deadline, locked, createdAt }
+     gb_{code}_order_{姓名編碼}  -> { name, items:{ [itemId]: qty }, updatedAt }
+       ※ 每個人各自獨立一把 key（不是共用同一份大物件），這樣多人同時送出訂單
+         時彼此不會互相覆蓋，也不需要「讀取→修改→寫回」造成的競爭問題。
+         主揪統計頁用 window.storage.list() 抓出這個團購代碼底下所有人的 key
+         再逐一讀取彙總。
    個人裝置端記憶（shared:false）：
      my_hosted_codes    -> [code, ...]           我開過的團購（方便回到主揪統計頁）
      my_joined          -> [{code,name}, ...]    我跟過的團購與填過的姓名
@@ -426,8 +430,9 @@ async function ocrImagesToText(images, report){
 }
 
 // 前端 fallback：貼上 OCR / 手動抄寫的純文字，用規則解析「品項＋價格」
-// 支援格式範例："珍珠奶茶 60"、"珍珠奶茶,60"、"珍珠奶茶：65元"、"珍珠奶茶 $60"
-// lenient=true 時額外支援 OCR 常見的「無分隔符號」情況，例如 "珍珠奶茶60"
+// 支援格式範例："珍珠奶茶 60"、"珍珠奶茶,60"、"珍珠奶茶：65元"、"珍珠奶茶 $60"、
+// "$60 珍珠奶茶"（價格在前）、"珍珠奶茶60"（OCR 常見無分隔符號）
+// lenient=true 時額外放寬比對規則，用於處理 OCR 掃描結果常見的雜訊與無空格排版
 function parseMenuFromText(text, lenient){
   const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const items = [];
@@ -436,12 +441,28 @@ function parseMenuFromText(text, lenient){
     let line = rawLine.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
     line = line.replace(/[|_丨]/g, ' ').trim();
     if (!line || line.length > 40) continue;
-    let m = line.match(/^(.{1,30}?)[\s.。:：,，、\-—]+\$?\s*(?:NT)?\$?\s*(\d{1,4})\s*(?:元|NT)?$/);
-    if (!m && lenient) m = line.match(/^([^\d]{1,30}?)(\d{2,4})$/);
+
+    let name, price;
+
+    // 名稱 + 分隔符號 + 價格（最常見的手動輸入 / 清楚排版格式）
+    let m = line.match(/^(.{1,30}?)[\s.。:：,，、\-—]+\$?\s*(?:NT)?\$?\s*(\d{1,4})(?:[.,]\d{1,2})?\s*(?:元|NT)?[.,、]*$/);
+    if (m){ name = m[1]; price = Number(m[2]); }
+
+    // 名稱緊接著價格、中間沒有分隔符號（OCR 很常見）
+    if (!m && lenient){
+      m = line.match(/^([^\d]{1,30}?)(\d{2,4})\s*(?:元)?[.,、]*$/);
+      if (m){ name = m[1]; price = Number(m[2]); }
+    }
+
+    // 價格在前、名稱在後（部分菜單排版）
+    if (!m && lenient){
+      m = line.match(/^\$?\s*(?:NT)?\$?\s*(\d{1,4})\s*(?:元|NT)?[\s.。:：,，、\-—]+([^\d]{1,30})$/);
+      if (m){ price = Number(m[1]); name = m[2]; }
+    }
+
     if (!m) continue;
-    const name = m[1].replace(/[.\-–—・、,，:：\s$]+$/,'').trim();
-    const price = Number(m[2]) || 0;
-    if (!name || price <= 0 || price > 9999) continue;
+    name = name.replace(/[.\-–—・、,，:：\s$]+$/,'').replace(/^[.\-–—・、,，:：\s$]+/,'').trim();
+    if (!name || !price || price <= 0 || price > 9999) continue;
     const key = name + '_' + price;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -490,14 +511,29 @@ async function storageSet(key, value, shared){
   try{ await window.storage.set(key, JSON.stringify(value), !!shared); return true; }
   catch(e){ console.error('storage set failed', e); return false; }
 }
-
-// 讀寫團購時用「讀取→合併→寫回」降低多人同時操作互相覆蓋的機率
-async function saveMyOrder(code, name, itemsMap){
-  const key = 'gb_' + code + '_orders';
-  const current = (await storageGet(key, true)) || {};
-  current[name] = { items: itemsMap, updatedAt: new Date().toISOString() };
-  await storageSet(key, current, true);
+async function storageListKeys(prefix, shared){
+  try{ const r = await window.storage.list(prefix, !!shared); return (r && r.keys) || []; }
+  catch(e){ return []; }
 }
+
+// 每個人的訂單各自存成獨立的 key，寫入時完全不需要讀取別人的資料，
+// 也就不會發生「兩人同時送出、其中一人的訂單被蓋掉」的競爭問題。
+function orderKey(code, name){ return 'gb_' + code + '_order_' + encodeURIComponent(name); }
+
+async function saveMyOrder(code, name, itemsMap){
+  await storageSet(orderKey(code, name), { name, items: itemsMap, updatedAt: new Date().toISOString() }, true);
+}
+async function loadMyOrder(code, name){
+  return await storageGet(orderKey(code, name), true); // { name, items, updatedAt } | null
+}
+async function loadAllOrders(code){
+  const keys = await storageListKeys('gb_' + code + '_order_', true);
+  const records = await Promise.all(keys.map(k => storageGet(k, true)));
+  const result = {};
+  records.filter(Boolean).forEach(rec => { result[rec.name] = { items: rec.items || {}, updatedAt: rec.updatedAt }; });
+  return result;
+}
+
 
 function resizeImageFile(file, maxDim, quality){
   return new Promise((resolve, reject) => {
@@ -530,12 +566,15 @@ const State = {
   orders: null,
   myName: '',
   myItems: {},            // itemId -> qty  (order 頁使用)
+  hasExistingOrder: false,
   images: [],             // create 頁：{dataUrl, base64}
   draftMenu: [],          // create 頁：編輯中的菜單
   ocrTab: 'ai',           // ai | paste | manual
   ocrLoading: false,
   ocrError: '',
   ocrProgressText: '',
+  ocrRawText: '',
+  pasteTextValue: '',
   pollTimer: null,
 };
 
@@ -544,7 +583,7 @@ function startPolling(fn, ms){ stopPolling(); State.pollTimer = setInterval(fn, 
 
 function goHome(){
   stopPolling();
-  Object.assign(State, { view:'home', code:null, session:null, orders:null, myItems:{}, images:[], draftMenu:[], ocrTab:'ai', ocrError:'' });
+  Object.assign(State, { view:'home', code:null, session:null, orders:null, myName:'', myItems:{}, hasExistingOrder:false, images:[], draftMenu:[], ocrTab:'ai', ocrError:'', ocrRawText:'' });
   render();
 }
 
@@ -709,22 +748,32 @@ function renderOcrTabBody(){
         首次使用本機 OCR 需下載繁中語言包，依網速可能需 10-40 秒。
       </p>
       <button class="btn btn-dark" data-act="run-ai-ocr" ${State.ocrLoading || !State.images.length ? 'disabled' : ''}>
-        ${State.ocrLoading ? '<span class="spinner"></span> 辨識中…' : '✨ 開始自動辨識'}
+        ${State.ocrLoading ? '<span class="spinner"></span> 辨識中…' : (State.ocrRawText ? '🔁 重新辨識' : '✨ 開始自動辨識')}
       </button>
       ${State.ocrLoading ? `<div class="hint" id="ocrProgressText" style="margin-top:8px;font-weight:700;">${esc(State.ocrProgressText||'')}</div>` : ''}
       ${!State.images.length ? '<div class="hint">請先在步驟 1 上傳至少一張菜單照片</div>' : ''}
       ${State.ocrError ? `<div class="hint" style="color:var(--danger); font-weight:700; margin-top:10px;">⚠️ ${esc(State.ocrError)}　已自動切換到下方「貼上文字」或「手動新增」繼續。</div>` : ''}
+      ${State.ocrRawText ? `
+        <details style="margin-top:12px;">
+          <summary style="cursor:pointer; font-size:12.5px; font-weight:700; color:var(--ink-soft);">📄 查看本機 OCR 辨識到的原始文字（可對照檢查漏抓或抓錯的價格）</summary>
+          <pre class="mono" style="white-space:pre-wrap; font-size:11.5px; background:#fffdf7; border:1px solid var(--paper-line); border-radius:8px; padding:10px; margin-top:8px; max-height:180px; overflow:auto;">${esc(State.ocrRawText)}</pre>
+          <div class="hint">漏掉的品項可以直接切到「📋 貼上文字」分頁，已經幫你把上面這段文字帶過去了，補上正確格式（例如「品項 價格」）後重新解析即可。</div>
+        </details>
+      ` : ''}
     `;
   }
   if (State.ocrTab === 'paste'){
+    const val = State.pasteTextValue || '';
     return `
       <p class="hint" style="margin-top:0;">
-        把用手機內建掃描文字功能，或別的 OCR App 認出的文字貼在下面，一行一個品項，格式如「珍珠奶茶 60」。
+        把用手機內建掃描文字功能、AI 辨識到的原始文字，或別的 OCR App 認出的文字貼在下面，
+        一行一個品項，格式如「珍珠奶茶 60」。系統會盡量處理沒有分隔符號、價格在前等各種排版，
+        解析後請務必到下方「步驟 3」核對每個品項的價格是否正確。
       </p>
       <div class="field" style="margin-top:8px;">
-        <textarea id="pasteText" placeholder="珍珠奶茶 60
+        <textarea id="pasteText" data-act="edit-paste" placeholder="珍珠奶茶 60
 四季青茶 25
-波霸鮮奶 65"></textarea>
+波霸鮮奶 65">${esc(val)}</textarea>
       </div>
       <button class="btn btn-dark" data-act="run-paste-parse">📋 解析文字並加入菜單</button>
     `;
@@ -749,22 +798,28 @@ function renderMenuEditor(){
 // =====================================================================================
 // ORDER（跟團者點餐頁）
 // =====================================================================================
-function enterOrder(code){
+// 設計重點：State.myItems（使用者正在調整、尚未送出的購物車）只會在「一開始載入」
+// 與「使用者主動確認姓名」這兩個時間點才會被伺服器資料覆寫。之後每 6 秒的輪詢只更新
+// 團購狀態（是否鎖定、截止時間），絕對不會去動 State.myItems —— 否則使用者調整到一半
+// 就會被輪詢回來的舊資料蓋掉，數量看起來像「自動跳回原值」。
+async function enterOrder(code){
   State.code = code; State.view = 'order';
   render();
-  refreshOrderView();
-  startPolling(refreshOrderView, 6000);
+  const session = await storageGet('gb_' + code, true);
+  State.session = session;
+  if (session && State.myName){
+    const myOrder = await loadMyOrder(code, State.myName);
+    State.myItems = myOrder ? { ...myOrder.items } : {};
+    State.hasExistingOrder = !!myOrder;
+  }
+  render();
+  startPolling(refreshOrderStatus, 6000);
 }
 
-async function refreshOrderView(){
+// 輪詢只刷新「團購本身的狀態」（是否鎖定／截止時間有沒有變），不觸碰使用者正在填的購物車
+async function refreshOrderStatus(){
   const session = await storageGet('gb_' + State.code, true);
-  if (!session){ State.session = null; render(); return; }
-  State.session = session;
-  const orders = (await storageGet('gb_' + State.code + '_orders', true)) || {};
-  State.orders = orders;
-  if (State.myName && orders[State.myName]){
-    State.myItems = { ...orders[State.myName].items };
-  }
+  State.session = session; // 找不到（null）也如實反映，畫面會顯示查無此團購
   render();
 }
 
@@ -835,7 +890,7 @@ function viewOrder(){
       <div class="bottombar">
         <div class="totals"><div class="lbl">你的小計</div><div class="amt">${money(total)}</div></div>
         <button class="btn btn-primary" data-act="submit-order" ${closed?'disabled':''}>
-          ${session._justSubmitted ? '✓ 已更新' : '送出訂單'}
+          ${State.hasExistingOrder ? '更新我的訂單' : '送出訂單'}
         </button>
       </div>
     ` : ''}
@@ -856,7 +911,7 @@ async function refreshHostView(){
   const session = await storageGet('gb_' + State.code, true);
   State.session = session;
   if (session){
-    State.orders = (await storageGet('gb_' + State.code + '_orders', true)) || {};
+    State.orders = await loadAllOrders(State.code);
   }
   render();
 }
@@ -1020,7 +1075,7 @@ function bindEvents(){
 
   app.querySelectorAll('[data-act]').forEach(el => {
     el.addEventListener('click', (e) => handleAct(el.dataset, e));
-    if (el.tagName === 'INPUT' && (el.dataset.act === 'edit-name' || el.dataset.act === 'edit-price')){
+    if ((el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && (el.dataset.act === 'edit-name' || el.dataset.act === 'edit-price' || el.dataset.act === 'edit-paste')){
       el.addEventListener('input', (e) => handleAct(el.dataset, e, true));
     }
   });
@@ -1029,7 +1084,7 @@ function bindEvents(){
 async function handleAct(ds, e, isInput){
   const act = ds.act;
 
-  if (act === 'go-create'){ State.view='create'; State.images=[]; State.draftMenu=[]; State.ocrTab='ai'; State.ocrError=''; render(); return; }
+  if (act === 'go-create'){ State.view='create'; State.images=[]; State.draftMenu=[]; State.ocrTab='ai'; State.ocrError=''; State.ocrRawText=''; State.pasteTextValue=''; render(); return; }
   if (act === 'go-join'){ State.view='order'; State.session=null; State.myName=''; render(); return; }
   if (act === 'go-home'){ goHome(); return; }
   if (act === 'open-host'){ enterHost(ds.code); return; }
@@ -1046,15 +1101,19 @@ async function handleAct(ds, e, isInput){
   if (act === 'run-ai-ocr'){
     State.ocrLoading = true; State.ocrError=''; State.ocrProgressText = '準備開始…'; render();
     try{
-      const { items, engine } = await recognizeMenuFromImages(State.images, (text, pct) => {
+      const { items, engine, rawText } = await recognizeMenuFromImages(State.images, (text, pct) => {
         State.ocrProgressText = text;
         const bar = document.getElementById('ocrProgressText');
         if (bar) bar.textContent = text; // 局部更新避免整頁重繪造成閃爍
       });
       State.draftMenu = State.draftMenu.concat(items);
+      if (rawText){
+        State.ocrRawText = rawText;
+        if (!State.pasteTextValue) State.pasteTextValue = rawText.trim();
+      }
       showToast(engine === 'claude'
         ? `✨ 雲端 AI 已辨識出 ${items.length} 項，請檢查修正`
-        : `📱 本機 OCR 已辨識出 ${items.length} 項，請仔細檢查修正（本機辨識準確度較低）`);
+        : `📱 本機 OCR 已辨識出 ${items.length} 項，請仔細檢查修正（本機辨識準確度較低，展開下方原始文字可對照補漏）`);
     }catch(err){
       console.error(err);
       State.ocrError = (err && err.message) ? err.message : '辨識失敗';
@@ -1062,6 +1121,7 @@ async function handleAct(ds, e, isInput){
     }
     State.ocrLoading = false; render(); return;
   }
+  if (act === 'edit-paste'){ State.pasteTextValue = e.target.value; return; }
   if (act === 'run-paste-parse'){
     const text = document.getElementById('pasteText').value;
     const items = parseMenuFromText(text, true);
@@ -1079,7 +1139,6 @@ async function handleAct(ds, e, isInput){
     const code = genCode();
     const session = { code, title: title || '團購點餐', menu, deadline, locked:false, createdAt: new Date().toISOString() };
     await storageSet('gb_'+code, session, true);
-    await storageSet('gb_'+code+'_orders', {}, true);
     const hosted = JSON.parse(localStorage.getItem('my_hosted_codes')||'[]');
     hosted.push(code); localStorage.setItem('my_hosted_codes', JSON.stringify(hosted));
     enterHost(code);
@@ -1099,15 +1158,16 @@ async function handleAct(ds, e, isInput){
     const name = (document.getElementById('myNameInput').value||'').trim();
     if (!name){ showToast('請輸入名字'); return; }
     State.myName = name;
-    const orders = State.orders || {};
-    State.myItems = orders[name] ? {...orders[name].items} : {};
+    const myOrder = await loadMyOrder(State.code, name);
+    State.myItems = myOrder ? {...myOrder.items} : {};
+    State.hasExistingOrder = !!myOrder;
     const joined = JSON.parse(localStorage.getItem('my_joined')||'[]');
     if (!joined.some(j=>j.code===State.code && j.name===name)) joined.push({code:State.code, name});
     localStorage.setItem('my_joined', JSON.stringify(joined));
     render();
     return;
   }
-  if (act === 'change-name'){ State.myName=''; State.myItems={}; render(); return; }
+  if (act === 'change-name'){ State.myName=''; State.myItems={}; State.hasExistingOrder=false; render(); return; }
   if (act === 'qty-inc'){
     State.myItems[ds.id] = (State.myItems[ds.id]||0) + 1; render(); return;
   }
@@ -1116,8 +1176,9 @@ async function handleAct(ds, e, isInput){
   }
   if (act === 'submit-order'){
     await saveMyOrder(State.code, State.myName, State.myItems);
+    State.hasExistingOrder = true;
     showToast('✅ 訂單已送出／更新！');
-    refreshOrderView();
+    render();
     return;
   }
 
